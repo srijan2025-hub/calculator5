@@ -113,74 +113,161 @@
   <button class="add card"><b style="color:var(--primary)">+ Add New</b></button>
 </template>
 
-<script>
+  <script>
 const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>Array.from(r.querySelectorAll(s));
 const defaultPage=()=>({id:Date.now()+Math.random(),name:'',price:'',priceUnit:'kg',budget:'',qty:'',qtyUnit:'gram'});
 let state={mode:'quantity',pages:[defaultPage()]};
 
 const LS_KEY='shopcalc-multi';
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
-function load(){try{const d=JSON.parse(localStorage.getItem(LS_KEY));if(d&&Array.isArray(d.pages))state=d;}catch{}}
+function load(){try{const d=JSON.parse(localStorage.getItem(LS_KEY));if(d&&Array.isArray(d.pages)&&(['quantity','amount'].includes(d.mode)))state=d;}catch{}}
 
 const clamp=n=>isFinite(n)&&n>=0?n:0;
 function pricePerGram(p,u){p=clamp(p);return u==='kg'?p/1000:u==='100g'?p/100:p;}
 function grams(q,u){return u==='kg'?clamp(q)*1000:clamp(q);}
 function fmt(g){return g>=1000?{v:(g/1000).toFixed(3),u:'kg'}:{v:g.toFixed(2),u:'g'};}
 
-function calc(p){
- const pg=pricePerGram(parseFloat(p.price),p.priceUnit);
- if(pg<=0)return state.mode==='quantity'?{l:'Max Quantity',v:'0.00',u:'g',r:0}:{l:'Total Cost',v:'0.00',u:'₹',r:0};
- if(state.mode==='quantity'){const b=clamp(parseFloat(p.budget)),g=b/pg,{v,u}=fmt(g);return{l:'Max Quantity',v,u,r:g};}
- const t=grams(parseFloat(p.qty),p.qtyUnit)*pg;return{l:'Total Cost',v:t.toFixed(2),u:'₹',r:t};
+function calcPage(page){
+  const pg=pricePerGram(parseFloat(page.price),page.priceUnit);
+  if(pg<=0) return state.mode==='quantity'
+    ? {label:'Max Quantity', v:'0.00', u:'g', raw:0}
+    : {label:'Total Cost',   v:'0.00', u:'₹', raw:0};
+  if(state.mode==='quantity'){
+    const g=clamp(parseFloat(page.budget))/pg;
+    const {v,u}=fmt(g);
+    return {label:'Max Quantity', v,u, raw:g};
+  }else{
+    const t=grams(parseFloat(page.qty),page.qtyUnit)*pg;
+    return {label:'Total Cost', v:t.toFixed(2), u:'₹', raw:t};
+  }
 }
 
-function summary(){
- if(state.mode==='quantity'){const g=state.pages.reduce((a,p)=>a+calc(p).r,0);const {v,u}=fmt(g);return{l:'Total Quantity (all)',v,u};}
- const t=state.pages.reduce((a,p)=>a+calc(p).r,0);return{l:'Total Amount (all)',v:t.toFixed(2),u:'₹'};}
- 
+function calcSummary(){
+  if(state.mode==='quantity'){
+    const totalG=state.pages.reduce((a,p)=>a+calcPage(p).raw,0);
+    const {v,u}=fmt(totalG);
+    return {label:'Total Quantity (all)', v:u==='kg'?v:v, u};
+  }else{
+    const total=state.pages.reduce((a,p)=>a+calcPage(p).raw,0);
+    return {label:'Total Amount (all)', v:total.toFixed(2), u:'₹'};
+  }
+}
+
+/* ---------- Rendering (structural) ---------- */
 const tabs=$('#tabs');
+
 function render(){
- tabs.innerHTML='';
- for(const p of state.pages){
-  const f=document.importNode($('#card-tpl').content,true),r=f.firstElementChild;
-  r.dataset.id=p.id;
-  $('[data-field=\"name\"]',r).value=p.name;
-  $('[data-field=\"price\"]',r).value=p.price;
-  $('[data-field=\"priceUnit\"]',r).value=p.priceUnit;
-  $('[data-field=\"budget\"]',r).value=p.budget;
-  $('[data-field=\"qty\"]',r).value=p.qty;
-  $('[data-field=\"qtyUnit\"]',r).value=p.qtyUnit;
-  $('[data-section=\"quantity\"]',r).classList.toggle('hidden',state.mode!=='quantity');
-  $('[data-section=\"amount\"]',r).classList.toggle('hidden',state.mode!=='amount');
-  const c=calc(p);
-  $('[data-field=\"label\"]',r).textContent=c.l;
-  $('[data-field=\"value\"]',r).textContent=c.v;
-  $('[data-field=\"unit\"]',r).textContent=c.u;
-  $('[data-action=\"delete\"]',r).onclick=()=>remove(p.id);
-  $$('[data-field]',r).forEach(el=>el.oninput=()=>{p[el.dataset.field]=el.value;save();render();});
-  tabs.appendChild(f);
- }
- if(state.pages.length){
-  const s=document.importNode($('#summary-tpl').content,true),sr=s.firstElementChild;
-  const sm=summary();$('[data-field=\"summaryLabel\"]',sr).textContent=sm.l;$('[data-field=\"summaryValue\"]',sr).textContent=sm.v;$('[data-field=\"summaryUnit\"]',sr).textContent=sm.u;
-  tabs.appendChild(s);
- }
- const add=document.importNode($('#add-tpl').content,true);add.firstElementChild.onclick=addPage;tabs.appendChild(add);
- $('#seg').setAttribute('data-mode',state.mode);
+  tabs.innerHTML='';
+  for(const p of state.pages){
+    const frag=document.importNode($('#card-tpl').content,true);
+    const card=frag.firstElementChild;
+    card.dataset.id=p.id;
+
+    // set values
+    $('[data-field="name"]',card).value=p.name;
+    $('[data-field="price"]',card).value=p.price;
+    $('[data-field="priceUnit"]',card).value=p.priceUnit;
+    $('[data-field="budget"]',card).value=p.budget;
+    $('[data-field="qty"]',card).value=p.qty;
+    $('[data-field="qtyUnit"]',card).value=p.qtyUnit;
+
+    // show sections based on mode
+    $('[data-section="quantity"]',card).classList.toggle('hidden',state.mode!=='quantity');
+    $('[data-section="amount"]',card).classList.toggle('hidden',state.mode!=='amount');
+
+    // initial outputs
+    writeOutputsForCard(card, p);
+
+    // listeners (incremental updates, NO full render)
+    $('[data-action="delete"]',card).addEventListener('click', ()=>remove(p.id));
+    $$('[data-field]',card).forEach(el=>{
+      el.addEventListener('input', ()=>{
+        const key=el.dataset.field;
+        const page=findPageById(card.dataset.id); if(!page) return;
+        page[key]=el.value;
+        save();
+        writeOutputsForCard(card, page);  // only update this card
+        writeSummary();                   // and the summary
+      });
+      // Also handle 'change' for selects (Android sometimes defers value until change)
+      if(el.tagName==='SELECT'){
+        el.addEventListener('change', ()=>{
+          const key=el.dataset.field;
+          const page=findPageById(card.dataset.id); if(!page) return;
+          page[key]=el.value;
+          save();
+          writeOutputsForCard(card, page);
+          writeSummary();
+        });
+      }
+    });
+
+    tabs.appendChild(frag);
+  }
+
+  // summary card
+  const sFrag=document.importNode($('#summary-tpl').content,true);
+  sFrag.firstElementChild.id='summary-card';
+  tabs.appendChild(sFrag);
+  writeSummary();
+
+  // add new
+  const addFrag=document.importNode($('#add-tpl').content,true);
+  addFrag.firstElementChild.addEventListener('click', addPage);
+  tabs.appendChild(addFrag);
+
+  // reflect mode UI
+  $('#seg').setAttribute('data-mode',state.mode);
 }
-function addPage(){state.pages.push(defaultPage());save();render();}
-function remove(id){state.pages.length===1?state.pages=[defaultPage()]:state.pages=state.pages.filter(p=>p.id!==id);save();render();}
-function setMode(m){state.mode=m;save();render();}window.setMode=setMode;
 
+/* ---------- Incremental writers ---------- */
+function writeOutputsForCard(cardEl, page){
+  const c=calcPage(page);
+  $('[data-field="label"]',cardEl).textContent=c.label;
+  $('[data-field="value"]',cardEl).textContent=c.v;
+  $('[data-field="unit"]',cardEl).textContent=c.u;
+}
+function writeSummary(){
+  const sEl=$('#summary-card'); if(!sEl) return;
+  const s=calcSummary();
+  $('[data-field="summaryLabel"]',sEl).textContent=s.label;
+  $('[data-field="summaryValue"]',sEl).textContent=s.v;
+  $('[data-field="summaryUnit"]',sEl).textContent=s.u;
+}
+
+/* ---------- Helpers ---------- */
+function findPageById(id){ return state.pages.find(p=>String(p.id)===String(id)); }
+
+/* ---------- Mutations that DO re-render ---------- */
+function addPage(){ state.pages.push(defaultPage()); save(); render(); }
+function remove(id){
+  if(state.pages.length===1){ state.pages=[defaultPage()]; }
+  else{ state.pages=state.pages.filter(p=>p.id!==id); }
+  save(); render();
+}
+function setMode(m){ state.mode=m; save(); render(); }
+window.setMode=setMode;
+
+/* ---------- Theme ---------- */
 const theme=$('#themeToggle');
-function apply(t){document.body.classList.toggle('dark',t==='dark');theme.classList.toggle('active',t==='dark');localStorage.setItem('calc-theme',t);}
-theme.onclick=()=>apply(document.body.classList.contains('dark')?'light':'dark');
+function applyTheme(t){
+  document.body.classList.toggle('dark',t==='dark');
+  theme.classList.toggle('active',t==='dark');
+  localStorage.setItem('calc-theme',t);
+}
+theme.addEventListener('click',()=>applyTheme(document.body.classList.contains('dark')?'light':'dark'));
 
-if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js'));
+/* ---------- Service worker ---------- */
+if('serviceWorker'in navigator){
+  window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(console.error));
+}
 
+/* ---------- Init ---------- */
 window.addEventListener('load',()=>{
- const t=localStorage.getItem('calc-theme');apply(t??(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'));
- load();render();
+  const t=localStorage.getItem('calc-theme');
+  applyTheme(t ?? (window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));
+  load();
+  render();
 });
 </script>
 </body>
