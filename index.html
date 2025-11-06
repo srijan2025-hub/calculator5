@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shopping Calculator – Multi Tabs</title>
+  <meta name="theme-color" content="#0ea5e9" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <style>
+    :root{
+      --primary: 14 165 233; /* sky-500 */
+      --primary-weak: 56 189 248; /* sky-400 */
+      --bg-light: 255 255 255;
+      --bg-dark: 0 0 0; /* AMOLED */
+      --text-dark: 17 24 39; /* gray-900 */
+    }
+    *{ font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+
+    body{ background: rgb(var(--bg-light)); color: rgb(var(--text-dark)); transition: background-color .4s, color .4s; }
+    body.dark{ background: rgb(var(--bg-dark)); color: #e5e7eb; }
+
+    /* Card + glow */
+    .card{
+      background:#fff; border-radius: 1rem; transition: box-shadow .35s, background .35s, color .35s, border-color .35s;
+      border: 2px solid rgba(0,0,0,.08);
+      box-shadow: 0 8px 30px rgba(0,0,0,.08);
+    }
+    body.light .card{ box-shadow: 0 0 0 2px rgba(0,0,0,.6) inset, 0 8px 30px rgba(0,0,0,.08); }
+    body.dark .card{ background:#0b0b0b; border-color:#1f2937; box-shadow: 0 0 0 2px rgba(255,255,255,.35) inset, 0 8px 35px rgba(0,0,0,.45); }
+
+    /* Inputs */
+    .field{ transition: background .35s, color .35s, border-color .35s, box-shadow .35s; }
+    body.dark .field{ background:#000; color:#e5e7eb; border-color:#2b2b2b; }
+    .field:focus{ outline: none; box-shadow: 0 0 0 3px rgba(14,165,233,.25); border-color: rgb(var(--primary)); }
+
+    /* Toggle (theme) */
+    .toggle{ width:56px; height:28px; border-radius:9999px; background:#e5e7eb; position:relative; cursor:pointer; transition: background .35s, box-shadow .35s; }
+    .toggle .dot{ width:24px; height:24px; border-radius:9999px; background:#fff; position:absolute; top:2px; left:2px; transition: transform .35s cubic-bezier(.45,0,.55,1), background .35s; }
+    .toggle.active{ background: rgb(var(--primary)); }
+    .toggle.active .dot{ transform: translateX(28px); background:#f8fafc; }
+
+    /* Segmented control */
+    .seg{ position:relative; display:flex; gap:.25rem; padding:.25rem; border-radius:.75rem; border:2px solid rgb(var(--primary)); }
+    .seg button{ position:relative; z-index:1; flex:1; padding:.5rem .75rem; font-weight:700; border-radius:.5rem; transition:color .25s, transform .2s; }
+    .seg .thumb{
+      position:absolute; z-index:0; top:4px; bottom:4px; width:50%;
+      background: rgb(var(--primary)); border-radius:.5rem; transition: transform .25s cubic-bezier(.25,.8,.25,1);
+      box-shadow: 0 6px 16px rgba(14,165,233,.35);
+    }
+    .seg[data-mode="quantity"] .thumb{ transform: translateX(0%); }
+    .seg[data-mode="amount"] .thumb{ transform: translateX(100%); }
+    .seg[data-mode="quantity"] #btn-q,
+    .seg[data-mode="amount"] #btn-a{ color:#fff; }
+    .seg button{ color:#0ea5e9; }
+    body.dark .seg button{ color:#7dd3fc; }
+
+    /* Result pill */
+    .result{ background: linear-gradient(135deg, rgba(var(--primary-weak)) 0%, rgba(var(--primary)) 100%); color:#fff; }
+
+    /* Grid for tabs (Chrome-like) */
+    .tabs-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:1rem; }
+
+    /* Add-new card */
+    .add-card{ border:2px dashed rgba(14,165,233,.6); display:flex; align-items:center; justify-content:center; min-height:180px; }
+    .add-card:hover{ background: rgba(14,165,233,.06); cursor:pointer; }
+
+    .hidden{ display:none!important; }
+  </style>
+</head>
+<body class="light">
+  <div class="min-h-screen p-4 md:p-6 max-w-6xl mx-auto">
+    <!-- Top bar -->
+    <div class="card p-4 md:p-5 mb-5">
+      <div class="flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <svg class="w-9 h-9" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect x="6" y="10" width="38" height="30" rx="6" stroke="currentColor" stroke-width="4"/>
+            <path d="M16 20h8M28 20h8M16 28h8M28 28h8" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+            <path d="M12 40h30l4 8H18l-6-8Z" fill="currentColor"/>
+            <circle cx="22" cy="52" r="4" fill="currentColor"/>
+            <circle cx="42" cy="52" r="4" fill="currentColor"/>
+          </svg>
+          <div>
+            <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Shopping Calculator</h1>
+            <p class="text-xs opacity-70 -mt-1">Multi-page like Chrome tabs • One mode for all • Auto totals</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-4">
+          <div id="seg" class="seg" data-mode="quantity" aria-label="Mode selector">
+            <div class="thumb"></div>
+            <button id="btn-q" type="button" onclick="setMode('quantity')">Quantity</button>
+            <button id="btn-a" type="button" onclick="setMode('amount')">Amount</button>
+          </div>
+          <div id="themeToggle" class="toggle" role="switch" aria-label="Toggle dark mode" tabindex="0"><div class="dot"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs grid -->
+    <div id="tabs" class="tabs-grid"></div>
+  </div>
+
+  <!-- Page/card template -->
+  <template id="card-tpl">
+    <div class="card p-4 flex flex-col gap-3" data-id="">
+      <div class="flex items-center justify-between gap-3">
+        <input type="text" class="field p-2 border rounded-md w-full font-semibold" placeholder="Item name (e.g., Chawal)" data-field="name" />
+        <button type="button" class="px-3 py-2 rounded-md border text-xs font-bold" data-action="delete">Remove</button>
+      </div>
+
+      <div class="grid grid-cols-1 gap-3">
+        <div>
+          <label class="block text-xs font-medium mb-1">Price Per Unit (₹)</label>
+          <div class="flex gap-2">
+            <input type="number" min="0" step="any" placeholder="e.g., 100" class="field w-full p-3 border rounded-lg" data-field="price" />
+            <select class="field w-36 p-3 border rounded-lg" data-field="priceUnit">
+              <option value="kg">₹/kg</option>
+              <option value="gram">₹/gram</option>
+              <option value="100g">₹/100 g</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Quantity mode budget -->
+        <div data-section="quantity">
+          <label class="block text-xs font-medium mb-1">Your Budget (₹)</label>
+          <input type="number" min="0" step="any" placeholder="e.g., 500" class="field w-full p-3 border rounded-lg" data-field="budget" />
+        </div>
+
+        <!-- Amount mode quantity -->
+        <div class="hidden" data-section="amount">
+          <label class="block text-xs font-medium mb-1">Quantity You Want</label>
+          <div class="flex gap-2">
+            <input type="number" min="0" step="any" placeholder="e.g., 750" class="field w-full p-3 border rounded-lg" data-field="qty" />
+            <select class="field w-36 p-3 border rounded-lg" data-field="qtyUnit">
+              <option value="gram">Gram</option>
+              <option value="kg">Kg</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="result mt-2 p-4 rounded-xl text-center shadow-lg">
+        <p class="text-[11px] font-semibold uppercase tracking-wider/loose mb-1 opacity-90" data-field="label">Max Quantity You Can Buy</p>
+        <p class="text-3xl font-extrabold">
+          <span data-field="value">0.00</span>
+          <span class="text-lg align-super font-bold opacity-95" data-field="unit">g</span>
+        </p>
+      </div>
+    </div>
+  </template>
+
+  <template id="summary-tpl">
+    <div class="card p-4 flex flex-col items-center justify-center text-center">
+      <p class="text-xs font-semibold uppercase opacity-70" data-field="summaryLabel">Total Quantity (all)</p>
+      <p class="text-3xl font-extrabold mt-1">
+        <span data-field="summaryValue">0.00</span>
+        <span class="text-lg align-super font-bold opacity-95" data-field="summaryUnit">g</span>
+      </p>
+    </div>
+  </template>
+
+  <template id="add-tpl">
+    <button type="button" class="card add-card rounded-xl p-6">
+      <div class="flex items-center gap-2 text-sky-500 font-bold">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        <span>Add New</span>
+      </div>
+    </button>
+  </template>
+
+  <script>
+    const $ = (sel, root=document) => root.querySelector(sel);
+    const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+
+    /* ---------- state ---------- */
+    const defaultPage = () => ({
+      id: (crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random())),
+      name: '',
+      price: '',
+      priceUnit: 'kg',
+      budget: '',
+      qty: '',
+      qtyUnit: 'gram'
+    });
+
+    let state = {
+      mode: 'quantity',
+      pages: [ defaultPage() ]
+    };
+
+    /* ---------- persistence ---------- */
+    const LS_KEY = 'shopcalc-multi';
+    function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+    function load(){
+      try{
+        const raw = localStorage.getItem(LS_KEY);
+        if(raw){
+          const data = JSON.parse(raw);
+          if(data && Array.isArray(data.pages) && (data.mode === 'quantity' || data.mode === 'amount')) state = data;
+        }
+      }catch(e){ console.warn('Load failed', e); }
+    }
+
+    /* ---------- helpers ---------- */
+    const clampNum = n => (isFinite(n) && n >= 0 ? n : 0);
+    function pricePerGram(price, unit){
+      price = clampNum(price);
+      if(unit === 'kg') return price/1000;
+      if(unit === '100g') return price/100;
+      return price; // per gram
+    }
+    const grams = (q, unit) => unit === 'kg' ? clampNum(q)*1000 : clampNum(q);
+
+    function fmtQty(g){
+      if(g >= 1000) return { v:(g/1000).toFixed(3), u:'kg' };
+      return { v:g.toFixed(2), u:'g' };
+    }
+
+    /* ---------- calculations ---------- */
+    function calcPage(page){
+      const ppg = pricePerGram(parseFloat(page.price), page.priceUnit);
+      if(ppg <= 0) return state.mode === 'quantity'
+        ? { label:'Max Quantity You Can Buy', v:'0.00', u:'g', raw:0 }
+        : { label:'Estimated Total Cost', v:'0.00', u:'₹', raw:0 };
+
+      if(state.mode === 'quantity'){
+        const budget = clampNum(parseFloat(page.budget));
+        const maxG = budget/ppg;
+        const {v,u} = fmtQty(maxG);
+        return { label:'Max Quantity You Can Buy', v, u, raw:maxG };
+      }else{
+        const total = grams(parseFloat(page.qty), page.qtyUnit)*ppg;
+        return { label:'Estimated Total Cost', v: total.toFixed(2), u:'₹', raw: total };
+      }
+    }
+
+    function calcSummary(){
+      if(state.mode === 'quantity'){
+        const sumG = state.pages.reduce((acc,p)=> acc + calcPage(p).raw, 0);
+        const {v,u} = fmtQty(sumG);
+        return { label:'Total Quantity (all)', v, u };
+      }else{
+        const sum₹ = state.pages.reduce((acc,p)=> acc + calcPage(p).raw, 0);
+        return { label:'Total Amount (all)', v: sum₹.toFixed(2), u:'₹' };
+      }
+    }
+
+    /* ---------- rendering ---------- */
+    const tabsEl = $('#tabs');
+
+    function render(){
+      tabsEl.innerHTML = '';
+
+      // Render each page card
+      for(const page of state.pages){
+        const card = document.importNode($('#card-tpl').content, true);
+        const root = card.firstElementChild;
+        root.dataset.id = page.id;
+
+        // hook fields
+        $('[data-field="name"]', root).value = page.name;
+        $('[data-field="price"]', root).value = page.price;
+        $('[data-field="priceUnit"]', root).value = page.priceUnit;
+        $('[data-field="budget"]', root).value = page.budget;
+        $('[data-field="qty"]', root).value = page.qty;
+        $('[data-field="qtyUnit"]', root).value = page.qtyUnit;
+
+        // show sections per mode
+        $('[data-section="quantity"]', root).classList.toggle('hidden', state.mode !== 'quantity');
+        $('[data-section="amount"]', root).classList.toggle('hidden', state.mode !== 'amount');
+
+        // calculate
+        const r = calcPage(page);
+        $('[data-field="label" ]', root).textContent = r.label;
+        $('[data-field="value" ]', root).textContent = r.v;
+        $('[data-field="unit"  ]', root).textContent = r.u;
+
+        // listeners
+        $('[data-action="delete"]', root).addEventListener('click', ()=>{ removePage(page.id); });
+        $$('[data-field]', root).forEach(el => {
+          el.addEventListener('input', ()=>{
+            const key = el.dataset.field;
+            state.pages = state.pages.map(p => p.id === page.id ? ({...p, [key]: el.value}) : p);
+            save();
+            render();
+          });
+        });
+
+        tabsEl.appendChild(card);
+      }
+
+      // Summary card
+      if(state.pages.length){
+        const sNode = document.importNode($('#summary-tpl').content, true);
+        const sRoot = sNode.firstElementChild;
+        const s = calcSummary();
+        $('[data-field="summaryLabel" ]', sRoot).textContent = s.label;
+        $('[data-field="summaryValue" ]', sRoot).textContent = s.v;
+        $('[data-field="summaryUnit"  ]', sRoot).textContent = s.u;
+        tabsEl.appendChild(sNode);
+      }
+
+      // Add new card
+      const addNode = document.importNode($('#add-tpl').content, true);
+      addNode.firstElementChild.addEventListener('click', addPage);
+      tabsEl.appendChild(addNode);
+
+      // Reflect mode UI
+      $('#seg').setAttribute('data-mode', state.mode);
+    }
+
+    function addPage(){
+      state.pages.push(defaultPage());
+      save();
+      render();
+    }
+
+    function removePage(id){
+      if(state.pages.length === 1){
+        // reset instead of removing last
+        state.pages = [ defaultPage() ];
+      } else {
+        state.pages = state.pages.filter(p => p.id !== id);
+      }
+      save();
+      render();
+    }
+
+    /* ---------- mode switch (global) ---------- */
+    function setMode(next){
+      state.mode = next;
+      save();
+      render();
+    }
+    window.setMode = setMode; // expose for buttons
+
+    /* ---------- theme ---------- */
+    const themeToggle = $('#themeToggle');
+    function applyTheme(theme){
+      document.body.classList.toggle('dark', theme === 'dark');
+      document.body.classList.toggle('light', theme !== 'dark');
+      themeToggle.classList.toggle('active', theme === 'dark');
+      localStorage.setItem('calc-theme', theme);
+    }
+    function toggleTheme(){
+      const next = document.body.classList.contains('dark') ? 'light' : 'dark';
+      applyTheme(next);
+    }
+    themeToggle.addEventListener('click', toggleTheme);
+    themeToggle.addEventListener('keydown', (e)=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggleTheme(); }});
+
+    /* ---------- service worker (PWA) ---------- */
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(console.error);
+      });
+    }
+
+    /* ---------- init ---------- */
+    window.addEventListener('load', ()=>{
+      // theme
+      const savedTheme = localStorage.getItem('calc-theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      applyTheme(savedTheme ?? (prefersDark ? 'dark' : 'light'));
+
+      // state
+      load();
+      render();
+
+      // keyboard: Ctrl/Cmd+N to add
+      window.addEventListener('keydown', (e)=>{
+        if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n'){
+          e.preventDefault();
+          addPage();
+        }
+      });
+    });
+  </script>
+</body>
+</html>
