@@ -1,67 +1,39 @@
-// --- Shopping Calculator PWA Service Worker ---
-// Version number — bump this (v1.0.0 → v1.0.1) when you update files
+// Shopping Calculator offline service worker
 const CACHE_VERSION = 'v1.0.0';
 const CACHE_NAME = `shopcalc-${CACHE_VERSION}`;
-
 const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
-  // Optionally cache icons if you have them:
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/maskable-512.png'
 ];
 
-// Install event — cache core files
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(ASSETS))
-      .then(() => self.skipWaiting())
-  );
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).then(()=>self.skipWaiting()));
 });
 
-// Activate event — clear old caches
-self.addEventListener('activate', event => {
-  event.waitUntil(
+self.addEventListener('activate', e => {
+  e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(
-        keys
-          .filter(k => k.startsWith('shopcalc-') && k !== CACHE_NAME)
-          .map(k => caches.delete(k))
-      )
-    ).then(() => self.clients.claim())
+      Promise.all(keys.filter(k=>k.startsWith('shopcalc-')&&k!==CACHE_NAME).map(k=>caches.delete(k)))
+    ).then(()=>self.clients.claim())
   );
 });
 
-// Fetch event — network first for HTML, cache first for others
-self.addEventListener('fetch', event => {
-  const req = event.request;
+self.addEventListener('fetch', e => {
+  const req = e.request;
+  if(req.method!=='GET')return;
   const isHTML = req.headers.get('accept')?.includes('text/html');
-
-  if (isHTML) {
-    // Try network first
-    event.respondWith(
-      fetch(req)
-        .then(res => {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
-          return res;
-        })
-        .catch(() => caches.match(req).then(res => res || caches.match('./index.html')))
+  if(isHTML){
+    e.respondWith(
+      fetch(req).then(r=>{const c=r.clone();caches.open(CACHE_NAME).then(x=>x.put(req,c));return r;})
+      .catch(()=>caches.match(req).then(r=>r||caches.match('./index.html')))
     );
-  } else {
-    // Cache first for static assets
-    event.respondWith(
-      caches.match(req).then(cached =>
-        cached ||
-        fetch(req).then(res => {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
-          return res;
-        })
-      )
+  }else{
+    e.respondWith(
+      caches.match(req).then(cached=>cached||fetch(req).then(r=>{const c=r.clone();caches.open(CACHE_NAME).then(x=>x.put(req,c));return r;}).catch(()=>cached))
     );
   }
 });
